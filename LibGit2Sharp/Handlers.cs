@@ -38,6 +38,13 @@
     public delegate bool TransferProgressHandler(TransferProgress progress);
 
     /// <summary>
+    /// Delegate definition for the current repository that is being operated on.
+    /// </summary>
+    /// <param name="repositoryPath"></param>
+    /// <returns></returns>
+    public delegate bool CurrentRepositoryHandler(string repositoryPath, CurrentRepositoryTransition transitionType);
+
+    /// <summary>
     /// Delegate definition for callback reporting push network progress.
     /// </summary>
     /// <param name="current">The current number of objects sent to server.</param>
@@ -110,6 +117,23 @@
         /// Deltafying stage.
         /// </summary>
         Deltafying
+    }
+
+    /// <summary>
+    /// Enum detailing whether we are starting or finishing
+    /// an operation on a repository.
+    /// </summary>
+    public enum CurrentRepositoryTransition
+    {
+        /// <summary>
+        /// Starting operation.
+        /// </summary>
+        Starting,
+
+        /// <summary>
+        /// Finished operation.
+        /// </summary>
+        Finished,
     }
 
     /// <summary>

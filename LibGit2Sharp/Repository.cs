@@ -552,6 +552,10 @@ namespace LibGit2Sharp
             Ensure.ArgumentNotNull(workdirPath, "workdirPath");
 
             options = options ?? new CloneOptions();
+            string repoPath;
+
+            string fullWorkDirPath = Path.GetFullPath(workdirPath);
+            NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullWorkDirPath, CurrentRepositoryTransition.Starting);
 
             using (GitCheckoutOptsWrapper checkoutOptionsWrapper = new GitCheckoutOptsWrapper(options))
             {
@@ -574,13 +578,81 @@ namespace LibGit2Sharp
 
                     using (RepositorySafeHandle repo = Proxy.git_clone(sourceUrl, workdirPath, ref cloneOpts))
                     {
-                        return Proxy.git_repository_path(repo).Native;
+                        repoPath = Proxy.git_repository_path(repo).Native;
                     }
                 }
                 finally
                 {
                     EncodingMarshaler.Cleanup(cloneOpts.CheckoutBranch);
                 }
+
+                NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullWorkDirPath, CurrentRepositoryTransition.Finished);
+
+                RecursivelyCloneSubmodules(options, repoPath);
+
+                return repoPath;
+            }
+        }
+
+        /// <summary>
+        /// Recursively clone submodules if directed to do so by the clone options.
+        /// </summary>
+        /// <param name="options">Options controlling clone behavior.</param>
+        /// <param name="repoPath">Path of the parent repository.</param>
+        private static void RecursivelyCloneSubmodules(CloneOptions options, string repoPath)
+        {
+            if (options.RecurseSubmodules)
+            {
+                List<string> submodules = new List<string>();
+
+                using (Repository repo = new Repository(repoPath))
+                {
+                    SubmoduleUpdateOptions updateOptions = new SubmoduleUpdateOptions()
+                    {
+                        Init = true,
+                        CredentialsProvider = options.CredentialsProvider,
+                        OnCheckoutProgress = options.OnCheckoutProgress,
+                        OnProgress = options.OnProgress,
+                        OnTransferProgress = options.OnTransferProgress,
+                        OnUpdateTips = options.OnUpdateTips,
+                    };
+
+                    foreach (var sm in repo.Submodules)
+                    {
+                        string fullSubmodulePath = Path.Combine(repo.Info.WorkingDirectory, sm.Path);
+
+                        NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullSubmodulePath, CurrentRepositoryTransition.Starting);
+
+                        repo.Submodules.Update(sm.Name, updateOptions);
+
+                        NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullSubmodulePath, CurrentRepositoryTransition.Finished);
+
+                        submodules.Add(Path.Combine(repo.Info.WorkingDirectory, sm.Path));
+                    }
+                }
+
+                // Check submodules to see if they have their own submodules.
+                foreach(string submodule in submodules)
+                {
+                    RecursivelyCloneSubmodules(options, submodule);
+                }
+            }
+        }
+
+        /// <summary>
+        /// If a callback has been provided to notify callers that we are
+        /// either starting or have finished working on a repository.
+        /// </summary>
+        /// <param name="repositoryChangedCallback">The callback to notify change.</param>
+        /// <param name="path">Path of repository this notification affects.</param>
+        /// <param name="transition"></param>
+        private static void NotifyCurrentRepositoryChanged(CurrentRepositoryHandler repositoryChangedCallback,
+                                                   string path,
+                                                   CurrentRepositoryTransition transition)
+        {
+            if (repositoryChangedCallback != null)
+            {
+                repositoryChangedCallback(path, transition);
             }
         }
 

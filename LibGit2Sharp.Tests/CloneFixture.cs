@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using LibGit2Sharp.Handlers;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
 using Xunit.Extensions;
@@ -241,6 +243,141 @@ namespace LibGit2Sharp.Tests
             var scd = BuildSelfCleaningDirectory();
 
             Assert.Throws<ArgumentNullException>(() => Repository.Clone(null, scd.DirectoryPath));
+        }
+
+        /// <summary>
+        /// Private helper to record the callbacks that were called as part of a clone.
+        /// </summary>
+        private class CallbacksCalled
+        {
+            /// <summary>
+            /// Was checkout progress called.
+            /// </summary>
+            public bool CheckoutProgressCalled { get; set; }
+
+            /// <summary>
+            /// Was remote ref update called.
+            /// </summary>
+            public bool RemoteRefUpdateCalled { get; set; }
+
+            /// <summary>
+            /// Was the transition callback called when starting
+            /// work on this repository.
+            /// </summary>
+            public bool StartingWorkInRepositoryCalled { get; set; }
+
+            /// <summary>
+            /// Was the transition callback called when finishing
+            /// work on this repository.
+            /// </summary>
+            public bool FinishedWorkInRepositoryCalled { get; set; }
+        }
+
+        [Fact]
+        public void CanRecursivelyCloneSubmodules()
+        {
+            var uri = new Uri(Path.GetFullPath(SandboxSubmoduleSmallTestRepo()));
+            var scd = BuildSelfCleaningDirectory();
+            string relativeSubmodulePath = "submodule_target_wd";
+
+            Dictionary<string, CallbacksCalled> callbacks = new Dictionary<string, CallbacksCalled>();
+
+            CallbacksCalled currentEntry = null;
+            bool unexpectedOrderOfCallbacks = false;
+
+            CheckoutProgressHandler checkoutProgressHandler = (x, y, z) =>
+                {
+                    if (currentEntry != null)
+                    {
+                        currentEntry.CheckoutProgressCalled = true;
+                    }
+                    else
+                    {
+                        unexpectedOrderOfCallbacks = true;
+                    }
+                };
+
+            UpdateTipsHandler remoteRefUpdated = (x, y, z) =>
+            {
+                if (currentEntry != null)
+                {
+                    currentEntry.RemoteRefUpdateCalled = true;
+                }
+                else
+                {
+                    unexpectedOrderOfCallbacks = true;
+                }
+
+                return true;
+            };
+
+            CurrentRepositoryHandler repositoryTransition = (x, y) =>
+                {
+                    if (y == CurrentRepositoryTransition.Finished)
+                    {
+                        if (currentEntry != null)
+                        {
+                            currentEntry.FinishedWorkInRepositoryCalled = true;
+                        }
+                        else
+                        {
+                            unexpectedOrderOfCallbacks = true;
+                        }
+                    }
+                    else
+                    {
+                        currentEntry = new CallbacksCalled();
+                        currentEntry.StartingWorkInRepositoryCalled = true;
+                        callbacks.Add(x, currentEntry);
+                    }
+
+                    return true;
+                };
+            
+            CloneOptions options = new CloneOptions()
+            {
+                RecurseSubmodules = true,
+                OnCheckoutProgress = checkoutProgressHandler,
+                OnUpdateTips = remoteRefUpdated,
+                CurrentRepositoryChanged = repositoryTransition,
+            };
+
+            string clonedRepoPath = Repository.Clone(uri.AbsolutePath, scd.DirectoryPath, options);
+            string workDirPath;
+            using(Repository repo = new Repository(clonedRepoPath))
+            {
+                workDirPath = repo.Info.WorkingDirectory.TrimEnd(new char[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+            }
+
+            // Verification:
+            // No callbacks were called out of the expected order.
+            Assert.False(unexpectedOrderOfCallbacks);
+
+            string[] expectedRepositoryPaths = new string[] { workDirPath, Path.Combine(workDirPath, relativeSubmodulePath) };
+
+            // Callbacks for each expected repository that is cloned
+            foreach (string repoName in expectedRepositoryPaths)
+            {
+                CallbacksCalled entry = null;
+                Assert.True(callbacks.TryGetValue(repoName, out entry), string.Format("{0} was not found in callbacks.", repoName));
+                Assert.True(entry.StartingWorkInRepositoryCalled);
+                Assert.True(entry.FinishedWorkInRepositoryCalled);
+                Assert.True(entry.CheckoutProgressCalled);
+                Assert.True(entry.RemoteRefUpdateCalled);
+            }
+
+            // submodule is initialized
+            // To Verify: submodule head commit
+            using(Repository repo = new Repository(clonedRepoPath))
+            {
+                var sm = repo.Submodules[relativeSubmodulePath];
+                Assert.True(sm.RetrieveStatus().HasFlag(SubmoduleStatus.InWorkDir |
+                                                        SubmoduleStatus.InConfig |
+                                                        SubmoduleStatus.InIndex |
+                                                        SubmoduleStatus.InHead));
+
+                Assert.False(repo.RetrieveStatus().IsDirty);
+            }
         }
     }
 }

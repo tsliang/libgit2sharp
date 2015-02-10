@@ -33,5 +33,10 @@ namespace LibGit2Sharp
         /// Handler to generate <see cref="LibGit2Sharp.Credentials"/> for authentication.
         /// </summary>
         public CredentialsHandler CredentialsProvider { get; set; }
+
+        /// <summary>
+        /// The current repository that is being operated on has changed.
+        /// </summary>
+        public CurrentRepositoryHandler CurrentRepositoryChanged { get; set; }
     }
 }

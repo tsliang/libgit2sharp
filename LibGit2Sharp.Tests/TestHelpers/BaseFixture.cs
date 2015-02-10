@@ -40,7 +40,7 @@ namespace LibGit2Sharp.Tests.TestHelpers
         public static string SubmoduleTestRepoWorkingDirPath { get; private set; }
         private static string SubmoduleTargetTestRepoWorkingDirPath { get; set; }
         private static string AssumeUnchangedRepoWorkingDirPath { get; set; }
-        private static string SubmoduleSmallTestRepoWorkingDirPath { get; set; }
+        public static string SubmoduleSmallTestRepoWorkingDirPath { get; set; }
 
         public static DirectoryInfo ResourcesDirectory { get; private set; }
 
@@ -71,7 +71,7 @@ namespace LibGit2Sharp.Tests.TestHelpers
             SubmoduleTestRepoWorkingDirPath = Path.Combine(sourceRelativePath, "submodule_wd");
             SubmoduleTargetTestRepoWorkingDirPath = Path.Combine(sourceRelativePath, "submodule_target_wd");
             AssumeUnchangedRepoWorkingDirPath = Path.Combine(sourceRelativePath, "assume_unchanged_wd");
-            SubmoduleSmallTestRepoWorkingDirPath = Path.Combine(ResourcesDirectory.FullName, "submodule_small_wd");
+            SubmoduleSmallTestRepoWorkingDirPath = Path.Combine(sourceRelativePath, "submodule_small_wd");
         }
 
         private static bool IsFileSystemCaseSensitiveInternal()
