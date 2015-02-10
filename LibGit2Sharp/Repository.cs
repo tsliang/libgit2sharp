@@ -554,8 +554,14 @@ namespace LibGit2Sharp
             options = options ?? new CloneOptions();
             string repoPath;
 
-            string fullWorkDirPath = Path.GetFullPath(workdirPath);
-            NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullWorkDirPath, CurrentRepositoryTransition.Starting);
+            // context variable that contains information on the repository that
+            // we are cloning.
+            var context = new RepositoryOperationContext(Path.GetFullPath(workdirPath));
+
+            // Notify caller that we are starting to work with the current repository.
+            NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged,
+                                           context,
+                                           CurrentRepositoryTransition.Starting);
 
             using (GitCheckoutOptsWrapper checkoutOptionsWrapper = new GitCheckoutOptsWrapper(options))
             {
@@ -586,9 +592,13 @@ namespace LibGit2Sharp
                     EncodingMarshaler.Cleanup(cloneOpts.CheckoutBranch);
                 }
 
-                NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullWorkDirPath, CurrentRepositoryTransition.Finished);
+                // Notify caller that we are done with the current repository.
+                NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged,
+                                               context,
+                                               CurrentRepositoryTransition.Finished);
 
-                RecursivelyCloneSubmodules(options, repoPath);
+                // Recursively clone submodules if requested.
+                RecursivelyCloneSubmodules(options, repoPath, 0);
 
                 return repoPath;
             }
@@ -599,7 +609,8 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name="options">Options controlling clone behavior.</param>
         /// <param name="repoPath">Path of the parent repository.</param>
-        private static void RecursivelyCloneSubmodules(CloneOptions options, string repoPath)
+        /// <param name="recursionDepth">The current depth of the recursion.</param>
+        private static void RecursivelyCloneSubmodules(CloneOptions options, string repoPath, int recursionDepth)
         {
             if (options.RecurseSubmodules)
             {
@@ -617,15 +628,26 @@ namespace LibGit2Sharp
                         OnUpdateTips = options.OnUpdateTips,
                     };
 
+                    string parentRepoWorkDir = repo.Info.WorkingDirectory;
+
                     foreach (var sm in repo.Submodules)
                     {
-                        string fullSubmodulePath = Path.Combine(repo.Info.WorkingDirectory, sm.Path);
+                        string fullSubmodulePath = Path.Combine(parentRepoWorkDir, sm.Path);
 
-                        NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullSubmodulePath, CurrentRepositoryTransition.Starting);
+                        var context = new RepositoryOperationContext(fullSubmodulePath,
+                                                                     parentRepoWorkDir,
+                                                                     sm.Name,
+                                                                     recursionDepth);
+
+                        NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged,
+                            context,
+                            CurrentRepositoryTransition.Starting);
 
                         repo.Submodules.Update(sm.Name, updateOptions);
 
-                        NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged, fullSubmodulePath, CurrentRepositoryTransition.Finished);
+                        NotifyCurrentRepositoryChanged(options.CurrentRepositoryChanged,
+                            context,
+                            CurrentRepositoryTransition.Finished);
 
                         submodules.Add(Path.Combine(repo.Info.WorkingDirectory, sm.Path));
                     }
@@ -634,7 +656,7 @@ namespace LibGit2Sharp
                 // Check submodules to see if they have their own submodules.
                 foreach(string submodule in submodules)
                 {
-                    RecursivelyCloneSubmodules(options, submodule);
+                    RecursivelyCloneSubmodules(options, submodule, recursionDepth + 1);
                 }
             }
         }
@@ -644,15 +666,15 @@ namespace LibGit2Sharp
         /// either starting or have finished working on a repository.
         /// </summary>
         /// <param name="repositoryChangedCallback">The callback to notify change.</param>
-        /// <param name="path">Path of repository this notification affects.</param>
+        /// <param name="context">Context of the repository this operation affects.</param>
         /// <param name="transition"></param>
         private static void NotifyCurrentRepositoryChanged(CurrentRepositoryHandler repositoryChangedCallback,
-                                                   string path,
-                                                   CurrentRepositoryTransition transition)
+                                                           RepositoryOperationContext context,
+                                                           CurrentRepositoryTransition transition)
         {
             if (repositoryChangedCallback != null)
             {
-                repositoryChangedCallback(path, transition);
+                repositoryChangedCallback(context, transition);
             }
         }
 

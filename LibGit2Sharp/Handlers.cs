@@ -40,9 +40,10 @@
     /// <summary>
     /// Delegate definition for the current repository that is being operated on.
     /// </summary>
-    /// <param name="repositoryPath"></param>
-    /// <returns></returns>
-    public delegate bool CurrentRepositoryHandler(string repositoryPath, CurrentRepositoryTransition transitionType);
+    /// <param name="context"></param>
+    /// <param name="transitionType"></param>
+    /// <returns>true to continue, false to cancel.</returns>
+    public delegate bool CurrentRepositoryHandler(RepositoryOperationContext context, CurrentRepositoryTransition transitionType);
 
     /// <summary>
     /// Delegate definition for callback reporting push network progress.

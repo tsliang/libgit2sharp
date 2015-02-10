@@ -328,7 +328,7 @@ namespace LibGit2Sharp.Tests
                     {
                         currentEntry = new CallbacksCalled();
                         currentEntry.StartingWorkInRepositoryCalled = true;
-                        callbacks.Add(x, currentEntry);
+                        callbacks.Add(x.RepositoryPath, currentEntry);
                     }
 
                     return true;
